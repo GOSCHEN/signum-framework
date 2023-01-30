@@ -71,6 +71,7 @@ export function start(options: { routes: JSX.Element[] }) {
   Constructor.registerConstructor(DashboardEntity, () => DashboardEntity.New({ owner: AppContext.currentUser && toLite(AppContext.currentUser) }));
 
   Navigator.addSettings(new EntitySettings(DashboardEntity, e => import('./Admin/Dashboard')));
+  Navigator.addSettings(new EntitySettings(PanelPartEmbedded, e => import('./Admin/PanelPart'), { modalSize: "xs" }));
   Navigator.addSettings(new EntitySettings(CachedQueryEntity, e => import('./Admin/CachedQuery')));
 
   Navigator.addSettings(new EntitySettings(ValueUserQueryListPartEntity, e => import('./Admin/ValueUserQueryListPart')));
@@ -86,7 +87,7 @@ export function start(options: { routes: JSX.Element[] }) {
   Operations.addSettings(new Operations.EntityOperationSettings(DashboardOperation.RegenerateCachedQueries, {
     isVisible: () => false,
     color: "warning",
-    icon: "cogs",
+    icon: "gears",
     contextual: { isVisible: () => true },
     contextualFromMany: { isVisible: () => true },
   }));
@@ -176,7 +177,7 @@ export function start(options: { routes: JSX.Element[] }) {
 
   registerRenderer(UserQueryPartEntity, {
     component: () => import('./View/UserQueryPart').then((a: any) => a.default),
-    defaultIcon: () => ({ icon: ["far", "list-alt"], iconColor: "#2E86C1" }),
+    defaultIcon: () => ({ icon: ["far", "rectangle-list"], iconColor: "#2E86C1" }),
     defaultTitle: c => translated(c.userQuery, uc => uc.displayName),
     withPanel: c => c.renderMode != "BigValue",
     getQueryNames: c => [c.userQuery?.query].notNull(),
@@ -190,7 +191,7 @@ export function start(options: { routes: JSX.Element[] }) {
         ev.preventDefault();
         ev.persist();
         const handler = cdRef.current as UserQueryPartHandler;
-        AppContext.pushOrOpenInTab(Finder.findOptionsPath(handler.findOptions, { userQuery: liteKey(toLite(c.userQuery!)) }), ev);
+        AppContext.pushOrOpenInTab(Finder.findOptionsPath(handler.findOptions, { userQuery: liteKey(toLite(c.userQuery!)), customDrilldowns: c.userQuery.customDrilldowns }), ev);
       },
     customTitleButtons: (c, entity, cdRef) => {
       if (!c.createNew)
@@ -227,17 +228,17 @@ export function start(options: { routes: JSX.Element[] }) {
         ev.preventDefault();
         ev.persist();
         UserQueryClient.Converter.toFindOptions(c.userQuery!, e)
-          .then(cr => AppContext.pushOrOpenInTab(Finder.findOptionsPath(cr, { userQuery: liteKey(toLite(c.userQuery!)) }), ev))
+          .then(cr => AppContext.pushOrOpenInTab(Finder.findOptionsPath(cr, { userQuery: liteKey(toLite(c.userQuery!)), customDrilldowns: c.userQuery!.customDrilldowns }), ev))
       }
   });
   registerRenderer(ImagePartEntity, {
     component: () => import('./View/ImagePartView').then(a => a.default),
-    defaultIcon: () => ({ icon: ["far", "list-alt"], iconColor: "forestgreen" }),
+    defaultIcon: () => ({ icon: ["far", "rectangle-list"], iconColor: "forestgreen" }),
     withPanel: () => false
   });
   registerRenderer(SeparatorPartEntity, {
     component: () => import('./View/SeparatorPartView').then(a => a.default),
-    defaultIcon: () => ({ icon: ["far", "list-alt"], iconColor: "forestgreen" }),
+    defaultIcon: () => ({ icon: ["far", "rectangle-list"], iconColor: "forestgreen" }),
     withPanel: () => false
   });
 
@@ -266,7 +267,7 @@ export function start(options: { routes: JSX.Element[] }) {
     return promise.then(das =>
       das.map(d => new QuickLinks.QuickLinkAction(liteKey(d), () => getToString(d) ?? "", e => {
         AppContext.pushOrOpenInTab(dashboardUrl(d, ctx.lite), e)
-      }, { icon: "tachometer-alt", iconColor: "darkslateblue" })));
+      }, { icon: "gauge", iconColor: "darkslateblue" })));
   });
 
   QuickLinks.registerQuickLink(DashboardEntity, ctx => new QuickLinks.QuickLinkAction("preview", () => DashboardMessage.Preview.niceToString(),

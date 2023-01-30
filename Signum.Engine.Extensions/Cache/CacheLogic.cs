@@ -890,10 +890,9 @@ Remember that the Start could be called with an empty database!");
 
     internal static AsyncThreadVariable<Dictionary<Type, bool>?> assumeMassiveChangesAsInvalidations = Statics.ThreadVariable<Dictionary<Type, bool>?>("assumeMassiveChangesAsInvalidations");
 
-
-    public static bool? AssumeMassiveChangesAsInvalidations(Type type)
+    public static bool? IsMassiveChangesAsInvalidations(Type type)
     {
-      return assumeMassiveChangesAsInvalidations.Value?.TryGetS(type);
+        return assumeMassiveChangesAsInvalidations.Value?.TryGetS(type);
     }
 
     public static IDisposable AssumeMassiveChangesAsInvalidations<T>(bool assumeInvalidations) where T : Entity

@@ -13,9 +13,11 @@ import { ErrorBoundary } from '@framework/Components';
 
 import ReactChart from '../D3Scripts/Components/ReactChart';
 import { useAPI } from '@framework/Hooks'
-import { TypeInfo } from '@framework/Reflection'
 import { FullscreenComponent } from './FullscreenComponent'
 import { DashboardFilter } from '../../Dashboard/View/DashboardFilterController'
+import * as UserQueryClient from '../../UserQueries/UserQueryClient'
+import { DynamicTypeConditionSymbolEntity } from '../../Dynamic/Signum.Entities.Dynamic'
+import { handleCustomDrilldowns } from '../../UserAssets/UserAssetClient'
 
 
 export interface ChartRendererProps {
@@ -71,64 +73,77 @@ export function handleDrillDown(r: ChartRow, e: React.MouseEvent | MouseEvent, c
 
   e.stopPropagation();
   var newWindow = e.ctrlKey || e.button == 1;
+  const customDrilldowns = cr.customDrilldowns.map(mle => mle.element);
+  const fo = extractFindOptions(cr, r);
+  const entity = r.entity ?? (ChartClient.hasAggregates(cr) ? undefined : fo.filterOptions?.singleOrNull(f => f?.token == "Entity")?.value);
+  if (entity) {
+    if (customDrilldowns.length > 0)
+      return handleCustomDrilldowns(customDrilldowns, { openInNewTab: newWindow, entity, onReload });
 
-  if (r.entity) {
     if (newWindow)
-      window.open(Navigator.navigateRoute(r.entity));
+      window.open(Navigator.navigateRoute(entity));
     else
-      Navigator.view(r.entity)
-        .then(() => onReload && onReload());
+      Navigator.view(entity)
+        .then(() => onReload?.());
   } else {
-    const filters = cr.filterOptions.map(f => {
-      let f2 = withoutPinned(f);
-      if (f2 == null)
-        return null;
-      return withoutAggregate(f2);
-    }).notNull();
-
-    const columns: ColumnOption[] = [];
-
-    cr.columns.map((a, i) => {
-
-      const qte = a.element.token;
-
-      if (qte?.token && !hasAggregate(qte!.token!) && r.hasOwnProperty("c" + i)) {
-        filters.push({
-          token: qte!.token!,
-          operation: "EqualTo",
-          value: (r as any)["c" + i],
-          frozen: false
-        } as FilterOptionParsed);
-      }
-
-      if (qte?.token && qte.token.parent != undefined) //Avoid Count and simple Columns that are already added
-      {
-        var t = qte.token;
-        if (t.queryTokenType == "Aggregate") {
-          columns.push({
-            token: t.parent!.fullKey,
-            summaryToken: t.fullKey
-          });
-        } else {
-          columns.push({
-            token: t.fullKey,
-          });
-        }
-      }
-    });
-
-    var fo: FindOptions = {
-      queryName: cr.queryKey,
-      filterOptions: toFilterOptions(filters),
-      includeDefaultFilters: false,
-      columnOptions: columns,
-      columnOptionsMode: "ReplaceOrAdd",
-    };
+    if (customDrilldowns.length > 0)
+      return handleCustomDrilldowns(customDrilldowns, { openInNewTab: newWindow, fo, onReload });
 
     if (newWindow)
       window.open(Finder.findOptionsPath(fo));
     else
       Finder.explore(fo)
-        .then(() => onReload && onReload());
+        .then(() => onReload?.());
   }
+}
+
+function extractFindOptions(cr: ChartRequestModel, r: ChartRow) {
+
+  const filters = cr.filterOptions.map(f => {
+    let f2 = withoutPinned(f);
+    if (f2 == null)
+      return null;
+    return withoutAggregate(f2);
+  }).notNull();
+
+  const columns: ColumnOption[] = [];
+
+  cr.columns.map((a, i) => {
+
+    const qte = a.element.token;
+
+    if (qte?.token && !hasAggregate(qte!.token!) && r.hasOwnProperty("c" + i)) {
+      filters.push({
+        token: qte!.token!,
+        operation: "EqualTo",
+        value: (r as any)["c" + i],
+        frozen: false
+      } as FilterOptionParsed);
+    }
+
+    if (qte?.token && qte.token.parent != undefined) //Avoid Count and simple Columns that are already added
+    {
+      var t = qte.token;
+      if (t.queryTokenType == "Aggregate") {
+        columns.push({
+          token: t.parent!.fullKey,
+          summaryToken: t.fullKey
+        });
+      } else {
+        columns.push({
+          token: t.fullKey,
+        });
+      }
+    }
+  });
+
+  var fo: FindOptions = {
+    queryName: cr.queryKey,
+    filterOptions: toFilterOptions(filters),
+    includeDefaultFilters: false,
+    columnOptions: columns,
+    columnOptionsMode: "ReplaceOrAdd",
+  };
+
+  return fo;
 }

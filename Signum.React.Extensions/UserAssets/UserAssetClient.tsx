@@ -1,19 +1,25 @@
 import * as React from 'react'
 import { ajaxPost, ajaxPostRaw, saveFile } from '@framework/Services';
 import { Type } from '@framework/Reflection'
-import { Entity, Lite } from '@framework/Signum.Entities'
+import { Entity, getToString, Lite, liteKey, MList, parseLite, toLite } from '@framework/Signum.Entities'
 import * as QuickLinks from '@framework/QuickLinks'
-import { FilterOption, FilterOperation, FilterOptionParsed, FilterGroupOptionParsed, FilterConditionOptionParsed, FilterGroupOption, FilterConditionOption, PinnedFilter, isFilterGroupOption, toPinnedFilterParsed } from '@framework/FindOptions'
+import { FilterOption, FilterOperation, FilterOptionParsed, FilterGroupOptionParsed, FilterConditionOptionParsed, FilterGroupOption, FilterConditionOption, PinnedFilter, isFilterGroupOption, toPinnedFilterParsed, FindOptions, FindOptionsParsed } from '@framework/FindOptions'
 import * as AuthClient from '../Authorization/AuthClient'
 import { IUserAssetEntity, UserAssetMessage, UserAssetPreviewModel, UserAssetPermission, QueryTokenEmbedded } from './Signum.Entities.UserAssets'
 import * as OmniboxClient from '../Omnibox/OmniboxClient'
 import { ImportRoute } from "@framework/AsyncImport";
 import { QueryToken } from '@framework/FindOptions';
 import { DashboardBehaviour, FilterGroupOperation } from '@framework/Signum.Entities.DynamicQuery';
-import { QueryFilterEmbedded, PinnedQueryFilterEmbedded } from '../UserQueries/Signum.Entities.UserQueries';
-import { softCast } from '@framework/Globals';
+import { QueryFilterEmbedded, PinnedQueryFilterEmbedded, UserQueryEntity } from '../UserQueries/Signum.Entities.UserQueries';
+import { Dic, softCast } from '@framework/Globals';
 import * as AppContext from '@framework/AppContext';
 import { translated } from '../Translation/TranslatedInstanceTools'
+import * as Finder from '@framework/Finder'
+import * as Navigator from '@framework/Navigator'
+import SelectorModal from '@framework/SelectorModal';
+import * as UserQueryClient from '../UserQueries/UserQueryClient'
+import { SearchControlLoaded } from '../../Signum.React/Scripts/Search';
+import { CustomDrilldownOptions } from '@framework/SearchControl/SearchControlLoaded';
 
 let started = false;
 export function start(options: { routes: JSX.Element[] }) {
@@ -28,6 +34,9 @@ export function start(options: { routes: JSX.Element[] }) {
   });
 
   AppContext.clearSettingsActions.push(() => started = false);
+
+  SearchControlLoaded.onCustomDrilldown = (items, options?: CustomDrilldownOptions) => handleCustomDrilldowns(items, options);
+
   started = true;
 }
 
@@ -110,7 +119,7 @@ export module Converter {
         tokenString: fr.token && fr.token.toString(),
         value: fr.value,
         pinned: fr.pinned,
-        filters: fr.filters.map(f => toFilterNode(f)),
+        filters: fr.filters.notNull().map(f => toFilterNode(f)),
         dashboardBehaviour: fr.dashboardBehaviour,
       });
 
@@ -250,4 +259,85 @@ export module API {
     file: FileUpload;
     model: UserAssetPreviewModel;
   }
+}
+
+const scapeTilde = Finder.Encoder.scapeTilde;
+
+export module Encoder {
+  export function encodeCustomDrilldowns(query: any, drilldowns: MList<Lite<Entity>> | undefined) {
+    if (drilldowns && drilldowns.length > 0)
+      drilldowns.map(mle => mle.element).map((d, i) => query["customDrilldown" + i] = liteKey(d) + "~" + scapeTilde(getToString(d)));
+    else {
+      const keys = Dic.getKeys(query);
+      keys.filter(k => k.startsWith("customDrilldown")).forEach(k => delete query[k]);
+    }
+  }
+}
+
+export module Decoder {
+  export function decodeCustomDrilldowns(query: any): MList<Lite<Entity>> {
+    return Finder.Decoder.valuesInOrder(query, "customDrilldown").map(d => {
+      var parts = d.value.split("~");
+
+      let liteKey: string;
+      let toStr: string;
+
+      [liteKey, toStr] = parts;
+
+      var lite = parseLite(liteKey);
+      lite.model = toStr;
+
+      return ({
+        rowId: null,
+        element: lite
+      });
+    });
+  }
+}
+
+export function handleCustomDrilldowns(items: Lite<Entity>[], options?: CustomDrilldownOptions) {
+  const fo = options?.fo;
+  const entity = options?.entity;
+  const openInNewTab = options?.openInNewTab;
+  const showInPlace = options?.showInPlace;
+  const onReload = options?.onReload;
+
+  return SelectorModal.chooseElement(items, { buttonDisplay: i => getToString(i), buttonName: i => liteKey(i) })
+    .then(lite => {
+      if (!lite || !UserQueryEntity.isLite(lite))
+        return;
+
+      return Navigator.API.fetch(lite)
+        .then(uq => {
+          if (fo)
+            return Finder.getQueryDescription(fo.queryName)
+              .then(qd => Finder.parseFindOptions(fo, qd, false)
+                .then(fop => UserQueryClient.Converter.applyUserQuery(fop, uq, entity, fo.includeDefaultFilters ?? false)
+                  .then(fop2 => Finder.toFindOptions(fop2, qd, uq.includeDefaultFilters ?? fo.includeDefaultFilters ?? false))
+                  .then(dfo => ({ fo: dfo, uq: uq }))));
+
+          return UserQueryClient.Converter.toFindOptions(uq, entity)
+            .then(dfo => ({ fo: dfo, uq: uq }));
+        });
+    })
+    .then(val => {
+      if (!val)
+        return;
+
+      if (openInNewTab || showInPlace) {
+        var extra: any = {};
+        extra.userQuery = liteKey(toLite(val.uq));
+        Encoder.encodeCustomDrilldowns(extra, val.uq.customDrilldowns);
+
+        const url = Finder.findOptionsPath(val.fo, extra);
+
+        if (showInPlace && !openInNewTab)
+          AppContext.history.push(url);
+        else
+          window.open(url);
+      }
+      else
+        Finder.explore(val.fo, { searchControlProps: { extraOptions: { userQuery: toLite(val.uq), customDrilldowns: val.uq.customDrilldowns } } })
+          .then(() => onReload?.());
+    });
 }
