@@ -35,6 +35,7 @@ public class WordTemplateParser : ITemplateParser
     {
         foreach (var part in document.AllParts().Where(p => p.RootElement != null))
         {
+            var cells = new List<S.Cell>();
             foreach (var item in part.RootElement!.Descendants())
             {
                 if (item is W.Paragraph wp)
@@ -43,13 +44,55 @@ public class WordTemplateParser : ITemplateParser
                 if (item is D.Paragraph dp)
                     ReplaceRuns(dp, new DrawingNodeProvider());
 
-                if (item is S.SharedStringItem s)
-                    ReplaceRuns(s, new SpreadsheetNodeProvider());
+                if (item is S.Cell cell)
+                    cells.Add(cell);
+            }
+
+            foreach (var cell in cells)
+            {
+                var inlineString = TryConvertToInlineString(cell);
+                if (inlineString != null)
+                    ReplaceRuns(inlineString, new SpreadsheetNodeProvider());
             }
 
 
             TableBinder.ValidateTables(part, this.template, this.Errors);
         }
+    }
+
+    private S.InlineString? TryConvertToInlineString(S.Cell cell)
+    {
+        if (cell.DataType?.Value == S.CellValues.SharedString)
+        {
+            if (!int.TryParse(cell.CellValue?.InnerText, out var index))
+                return null;
+
+            var sharedTable = ((SpreadsheetDocument)document).WorkbookPart!.SharedStringTablePart!.SharedStringTable!;
+            var sharedItem = (S.SharedStringItem)sharedTable.ElementAt(index);
+
+            if (!TemplateUtils.KeywordsRegex.IsMatch(sharedItem.InnerText))
+                return null;
+
+            var inlineString = new S.InlineString();
+            foreach (var child in sharedItem.ChildElements)
+                inlineString.AppendChild(child.CloneNode(true));
+
+            cell.RemoveAllChildren();
+            cell.DataType = S.CellValues.InlineString;
+            cell.AppendChild(inlineString);
+            return inlineString;
+        }
+
+        if (cell.DataType?.Value == S.CellValues.InlineString)
+        {
+            var inlineString = cell.GetFirstChild<S.InlineString>();
+            if (inlineString == null || !TemplateUtils.KeywordsRegex.IsMatch(inlineString.InnerText))
+                return null;
+
+            return inlineString;
+        }
+
+        return null;
     }
 
     private void ReplaceRuns(OpenXmlCompositeElement par, INodeProvider nodeProvider)

@@ -99,7 +99,9 @@ class WordTemplateRenderer
                 p.DeletePart(item);
             }
         }
-        
+
+        if (document is SpreadsheetDocument spreadsheet)
+            SpreadsheetReindexer.Reindex(spreadsheet);
     }
 
     public void AssertClean()
