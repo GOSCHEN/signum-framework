@@ -1852,6 +1852,9 @@ internal class DbExpressionNominator : DbExpressionVisitor
                 AssertSqlServer(m);
                 return TrySqlFunction(null, SqlFunction.VECTOR_NORMALIZE, typeof(Vector), m.GetArgument("vector"), ToSqlConstant<SqlVectorNormType>(m.GetArgument("normType"), SqlVectorSearch.GetSqlVectorNormType));
 
+            case "JsonExtensions.JsonValue":
+                return TryJsonValue(m);
+
             case "PgVectorSearch.Distance":
                 AssertPostgres(m);
                 var metric = (PGVectorDistanceMetric)((ConstantExpression)m.GetArgument("distanceMetric")).Value!;
@@ -1988,13 +1991,13 @@ internal class DbExpressionNominator : DbExpressionVisitor
                     return Visit(m.GetArgument("value"));
                 }
 
-            case "decimal.Parse": return Add(new SqlCastExpression(typeof(decimal), m.GetArgument("s")));
-            case "double.Parse": return Add(new SqlCastExpression(typeof(double), m.GetArgument("s")));
-            case "float.Parse": return Add(new SqlCastExpression(typeof(float), m.GetArgument("s")));
-            case "byte.Parse": return Add(new SqlCastExpression(typeof(byte), m.GetArgument("s")));
-            case "short.Parse": return Add(new SqlCastExpression(typeof(short), m.GetArgument("s")));
-            case "int.Parse": return Add(new SqlCastExpression(typeof(int), m.GetArgument("s")));
-            case "long.Parse": return Add(new SqlCastExpression(typeof(long), m.GetArgument("s")));
+            case "decimal.Parse": return TrySqlCast(typeof(decimal), m.GetArgument("s"));
+            case "double.Parse": return TrySqlCast(typeof(double), m.GetArgument("s"));
+            case "float.Parse": return TrySqlCast(typeof(float), m.GetArgument("s"));
+            case "byte.Parse": return TrySqlCast(typeof(byte), m.GetArgument("s"));
+            case "short.Parse": return TrySqlCast(typeof(short), m.GetArgument("s"));
+            case "int.Parse": return TrySqlCast(typeof(int), m.GetArgument("s"));
+            case "long.Parse": return TrySqlCast(typeof(long), m.GetArgument("s"));
 
             case "SqlHierarchyId.GetAncestor":
                 {
@@ -2126,6 +2129,51 @@ internal class DbExpressionNominator : DbExpressionVisitor
             if (this.isPostgres)
                 throw new InvalidOperationException($"The method {m.Method.DeclaringType!.TypeName()}.{m.Method.Name} can only be called with a " + nameof(SqlServerConnector));
         }
+    }
+
+    private Expression? TryJsonValue(MethodCallExpression m)
+    {
+        if (innerProjection)
+            return null;
+
+        var pathExp = m.GetArgument("path");
+        if (pathExp is not ConstantExpression { Value: string path })
+            throw new InvalidOperationException($"The 'path' argument of {nameof(JsonExtensions.JsonValue)} should be a constant string, not '{pathExp}'");
+
+        var json = m.GetArgument("json");
+
+        if (!isPostgres)
+        {
+            if (!((SqlServerConnector)Connector.Current).SupportsJson)
+                throw new InvalidOperationException($"{nameof(JsonExtensions.JsonValue)} requires SQL Server 2016 or later");
+
+            return TrySqlFunction(null, SqlFunction.JSON_VALUE, typeof(string), json, new SqlConstantExpression(path.Replace("'", "''")));
+        }
+
+        var (strict, segments) = JsonPathParser.Parse(path);
+        if (strict)
+            throw new InvalidOperationException($"{nameof(JsonExtensions.JsonValue)} with a 'strict' path is not supported in PostgreSQL");
+
+        var jsonb = Visit(json);
+        if (!Has(jsonb))
+            return null;
+
+        //Same normalized form that PostgreSQL stores for generated columns: (("Data")::jsonb #>> '{companyId}'::text[])
+        var textArray = "{" + segments.ToString(s => s.Index is int i ? i.ToString() : PgArrayElement(s.Name!), ",") + "}";
+
+        return Add(new SqlFunctionExpression(typeof(string), null, PostgressOperator.JsonPathText, new Expression[]
+        {
+            new SqlCastExpression(typeof(string), jsonb, new AbstractDbType(NpgsqlDbType.Jsonb)),
+            new SqlLiteralExpression(typeof(string[]), "'" + textArray.Replace("'", "''") + "'::text[]"),
+        }));
+    }
+
+    static string PgArrayElement(string name)
+    {
+        bool needsQuotes = name.Length == 0 || name.Equals("NULL", StringComparison.OrdinalIgnoreCase) ||
+            name.Any(c => char.IsWhiteSpace(c) || c == ',' || c == '{' || c == '}' || c == '"' || c == '\\');
+
+        return needsQuotes ? "\"" + name.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"" : name;
     }
 
     static SqlConstantExpression ToSqlConstant<T>(Expression expression, Func<T, string> converter)

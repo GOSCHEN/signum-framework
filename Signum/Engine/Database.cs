@@ -68,7 +68,10 @@ public static class Database
         var view = schema.View<T>();
         var parameters = view.GetInsertParameters(viewObject);
 
-        var sql = $@"INSERT INTO {view.Name} ({view.Columns.ToString(p => p.Key.SqlEscape(schema.Settings.IsPostgres), ", ")})
+        //Computed columns are calculated by the database and have no parameter
+        var columns = view.Columns.Values.Where(c => c.ComputedColumn == null);
+
+        var sql = $@"INSERT INTO {view.Name} ({columns.ToString(c => c.Name.SqlEscape(schema.Settings.IsPostgres), ", ")})
 VALUES ({parameters.ToString(p => p.ParameterName, ", ")})";
 
         return Executor.ExecuteNonQuery(sql, parameters);

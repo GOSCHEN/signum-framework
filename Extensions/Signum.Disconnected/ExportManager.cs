@@ -360,14 +360,16 @@ public class BasicExporter<T> : ICustomExporter where T : Entity
     {
         ObjectName newTableName = table.Name.OnDatabase(newDatabaseName);
         var isPostgres = Schema.Current.Settings.IsPostgres;
+        //Computed columns are calculated by the database and can not be the target of an INSERT
+        var columns = table.Columns.Values.Where(c => c.ComputedColumn == null).ToList();
         string command =
 @"INSERT INTO {0} ({2})
 SELECT {3}
                 from {1} as [table]".FormatWith(
                 newTableName,
                 table.Name,
-                table.Columns.Keys.ToString(a => a.SqlEscape(isPostgres), ", "),
-                table.Columns.Keys.ToString(a => "[table]." + a.SqlEscape(isPostgres), ", "));
+                columns.ToString(c => c.Name.SqlEscape(isPostgres), ", "),
+                columns.ToString(c => "[table]." + c.Name.SqlEscape(isPostgres), ", "));
 
         if (filter != null)
         {

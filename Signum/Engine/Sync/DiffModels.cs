@@ -386,6 +386,10 @@ public class DiffColumn
 
     public bool ColumnEquals(IColumn other, bool ignorePrimaryKey, bool ignoreIdentity, bool ignoreGenerateAlways)
     {
+        //SQL Server infers type, size and nullability of computed columns from the expression
+        if (!Schema.Current.Settings.IsPostgres && (other.ComputedColumn != null || this.ComputedColumn != null))
+            return ComputedEquals(other);
+
         var result = DbType.Equals(other.DbType)
             && Collation == other.Collation
             && StringComparer.InvariantCultureIgnoreCase.Equals(UserTypeName, other.UserDefinedTypeName)
@@ -479,7 +483,8 @@ public class DiffColumn
         if (p == null)
             return null;
 
-        return p.Replace("(", "").Replace(")", "").Replace("'", "").ToLower();
+        //SQL Server stores computed column definitions normalized: (json_value([Data],'$.companyId'))
+        return p.Replace("(", "").Replace(")", "").Replace("[", "").Replace("]", "").Replace("'", "").Replace(" ", "").Replace("\r", "").Replace("\n", "").Replace("\t", "").ToLower();
     }
 
     public DiffColumn Clone()

@@ -298,12 +298,13 @@ FOR EACH ROW EXECUTE PROCEDURE versioning({VersioningTriggerArgs(t.SystemVersion
 
     public string ColumnLine(IColumn c, DefaultConstraint? defaultConst, CheckConstraint? checkConst, bool isChange, bool avoidSystemVersion = false, bool forHistoryTable = false)
     {
-        string fullType = GetColumnType(c);
+        //SQL Server infers the type of computed columns, PostgreSQL requires it
+        string? fullType = c.ComputedColumn != null && !isPostgres ? null : GetColumnType(c);
 
         var generatedAlways =
             c.ComputedColumn is { } ga ? (isPostgres ?
-                $"GENERATED ALWAYS AS ({ga.Expression}) {(ga.Persisted ? "STORED" : null)}":
-                $"AS ({ga.Expression}) {((ga.Persisted ? " PERSISTED" : null))}") :
+                $"GENERATED ALWAYS AS ({ga.Expression}){(ga.Persisted ? " STORED" : null)}":
+                $"AS ({ga.Expression}){(ga.Persisted ? " PERSISTED" : null)}") :
             c is SystemVersionedInfo.SqlServerPeriodColumn svc && !forHistoryTable && !avoidSystemVersion ? $"GENERATED ALWAYS AS ROW {(svc.SystemVersionColumnType == SystemVersionedInfo.SystemVersionColumnType.Start ? "START" : "END")} HIDDEN" :
             null;
 
@@ -802,9 +803,12 @@ WHERE {oldPrimaryKey.SqlEscape(IsPostgres)} NOT IN
         if (Equals(oldTable.Name.Schema.Database, newTableName.Schema.Database))
             return RenameOrChangeSchema(oldTable.Name, newTableName);
 
+        //Computed columns are calculated by the database and can not be the target of an INSERT
+        var columnNames = newTable.Columns.Values.Where(c => c.ComputedColumn == null).Select(c => c.Name).ToList();
+
         return SqlPreCommand.Combine(Spacing.Simple,
           CreateTableSql(newTable, newTableName, avoidSystemVersioning: true, forHistoryTable: forHistoryTable),
-          MoveRows(oldTable.Name, newTableName, newTable.Columns.Keys, identityInsert: newTable.Columns.Values.Any(c => c.PrimaryKey && c.Identity) && !forHistoryTable),
+          MoveRows(oldTable.Name, newTableName, columnNames, identityInsert: newTable.Columns.Values.Any(c => c.PrimaryKey && c.Identity) && !forHistoryTable),
           DropTable(oldTable, isPostgres))!;
     }
 

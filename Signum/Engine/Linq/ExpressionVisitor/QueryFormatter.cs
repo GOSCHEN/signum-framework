@@ -69,6 +69,16 @@ internal class QueryFormatter : DbExpressionVisitor
         return new DbParameterPair(param, name);
     }
 
+    bool forComputedColumn = false;
+
+    static internal string FormatComputedColumn(Expression expression)
+    {
+        QueryFormatter qf = new QueryFormatter { forComputedColumn = true };
+        qf.Visit(expression);
+
+        return qf.sb.ToString().Trim();
+    }
+
     static internal SqlPreCommandSimple Format(Expression expression)
     {
         QueryFormatter qf = new QueryFormatter();
@@ -96,6 +106,12 @@ internal class QueryFormatter : DbExpressionVisitor
 
     private void AppendNewLine(Indentation style)
     {
+        if (forComputedColumn) //single-line definition
+        {
+            sb.Append(' ');
+            return;
+        }
+
         sb.AppendLine();
         this.Indent(style);
         for (int i = 0, n = this.depth * this.indent; i < n; i++)
@@ -379,11 +395,36 @@ internal class QueryFormatter : DbExpressionVisitor
             if (!schema.Settings.IsDbType(c.Value.GetType().UnNullify()))
                 throw new NotSupportedException(string.Format("The constant for {0} is not supported", c.Value));
 
+            if (forComputedColumn)
+            {
+                AppendInlineConstant(c.Value);
+                return c;
+            }
+
             var pi = parameterExpressions.GetOrCreate(c, () => this.CreateParameter(c));
 
             sb.Append(pi.Name);
         }
         return c;
+    }
+
+    //Computed column definitions can not have parameters
+    void AppendInlineConstant(object value)
+    {
+        if (value.GetType().IsEnum)
+            value = Convert.ToInt32(value);
+
+        switch (value)
+        {
+            case string s: sb.Append("'" + s.Replace("'", "''") + "'"); break;
+            case bool b: sb.Append(isPostgres ? (b ? "true" : "false") : (b ? "1" : "0")); break;
+            case byte or sbyte or short or ushort or int or uint or long or ulong:
+                sb.Append(((IFormattable)value).ToString(null, CultureInfo.InvariantCulture)); break;
+            case decimal or double or float:
+                sb.Append(((IFormattable)value).ToString(null, CultureInfo.InvariantCulture)); break;
+            default:
+                throw new InvalidOperationException($"A constant of type {value.GetType().TypeName()} can not be inlined in a computed column definition");
+        }
     }
 
     protected internal override Expression VisitSqlConstant(SqlConstantExpression c)
@@ -421,6 +462,12 @@ internal class QueryFormatter : DbExpressionVisitor
 
     protected internal override Expression VisitColumn(ColumnExpression column)
     {
+        if (forComputedColumn)
+        {
+            sb.Append(column.Name!.SqlEscape(isPostgres));
+            return column;
+        }
+
         sb.Append(column.Alias.ToString());
         if (column.Name != null) //Is null for PostgressFunctions.unnest and friends (IQueryable<int> table-valued function)
         {

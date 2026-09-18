@@ -293,6 +293,7 @@ public static class MusicLoader
 
         new ConfigEntity
         {
+            Data = """{"companyId":"42","tags":["a","b"],"limits":{"max":10}}""",
             EmbeddedConfig = new EmbeddedConfigEmbedded
             {
                 Awards = { ga.ToLite() }

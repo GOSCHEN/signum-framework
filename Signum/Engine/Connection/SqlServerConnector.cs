@@ -553,6 +553,8 @@ public class SqlServerConnector : Connector
 
     public bool SupportsDateTrunc => Version >= SqlServerVersion.SqlServer2022;
 
+    public bool SupportsJson => Version >= SqlServerVersion.SqlServer2016;
+
     public override bool SupportsPartitioning => true;
 
     public override bool SupportsVectors => this.Version >= SqlServerVersion.SqlServer2025;

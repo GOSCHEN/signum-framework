@@ -84,6 +84,25 @@ There are some .Net functions that are supported by Linq to Signum and will be t
 
 * Extension methods defined in Signum.Utilities. They work in-memory code too. 
 
+### JSON Functions
+
+| .Net Function		      | SQL Server               | PostgreSQL
+|-------------------------|--------------------------|----------------------------------
+| a.JsonValue("$.x.y[0]")*| JSON_VALUE(a, '$.x.y[0]')| (a :: jsonb #>> '{x,y,0}'::text[])
+
+* Extension method defined in `Signum.Utilities.JsonExtensions`. It works in-memory too (lax semantics: a missing path or a non-scalar value returns `null`).
+The `path` argument has to be a constant string. `JSON_VALUE` requires SQL Server 2016 or later. 
+Only simple paths are supported (`$`, `.name`, `."quoted name"`, `[index]`), wildcards are not.
+For an object or array, `JSON_VALUE` (and the in-memory implementation) returns `null` while PostgreSQL `#>>` returns its JSON text.
+
+`JsonValue` is also useful to declare a [computed column](../Schema/FluentInclude.md#withcomputedcolumn) that can be indexed:
+
+```C#
+sb.Include<ConfigEntity>()
+  .WithComputedColumn(c => c.CompanyId, c => c.Data.JsonValue("$.companyId"))
+  .WithIndex(c => c.CompanyId);
+```
+
 ### Math Functions
 
 | .Net Function		  | Sql function

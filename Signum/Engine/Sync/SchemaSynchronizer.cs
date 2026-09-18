@@ -492,6 +492,10 @@ public static class SchemaSynchronizer
                                         sqlBuilder.AlterTableAddColumn(tab, tabCol)
                                     );
                                 }
+                                else if (tabCol.ComputedColumn != null && !sqlBuilder.IsPostgres) //SQL Server infers type and nullability from the expression
+                                {
+                                    return difCol.Name == tabCol.Name ? null : sqlBuilder.RenameColumn(tab, difCol.Name, tabCol.Name, withHistory);
+                                }
                                 else if (!difCol.CompatibleTypes(tabCol) || difCol.Identity != tabCol.Identity)
                                 {
                                     if (difCol.PrimaryKey)
@@ -1072,6 +1076,9 @@ JOIN {tm.BackReference.ReferenceTable.Name} e on mle.{tm.BackReference.Name} = e
     private static bool NeedsDefaultValue(ITable table, IColumn column, bool forHistory)
     {
         if (column.Nullable == IsNullable.Yes)
+            return false;
+
+        if (column.ComputedColumn != null)
             return false;
 
         if (column.Identity || column.Default != null)

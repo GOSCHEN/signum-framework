@@ -1598,6 +1598,9 @@ public partial class FieldValue
 {
     protected internal override void CreateParameter(List<Table.Trio> trios, List<Expression> assigments, Expression value, Expression forbidden, Expression suffix)
     {
+        if (ComputedColumn != null) //calculated by the database
+            return;
+
         trios.Add(new Table.Trio(this, value, suffix));
     }
 }
