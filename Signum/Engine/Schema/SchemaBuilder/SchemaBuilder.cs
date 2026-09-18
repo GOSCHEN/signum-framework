@@ -172,6 +172,11 @@ public class SchemaBuilder
         if (fieldValue.FieldType.IsValueType && !fieldValue.FieldType.IsNullable())
             throw new InvalidOperationException($"The property {typeof(T).TypeName()}.{fieldValue.Name} should be nullable ({fieldValue.FieldType.Nullify().TypeName()}) because the database decides the nullability of a computed column");
 
+        //A not nullable reference property gets an implicit NotNullValidator, but a computed column is only calculated by the database
+        if (fieldValue.Route.PropertyRouteType == PropertyRouteType.FieldOrProperty && fieldValue.Route.PropertyInfo != null &&
+            Validator.TryGetPropertyValidator(fieldValue.Route)?.Validators.OfType<NotNullValidatorAttribute>().Any(nn => !nn.Disabled) == true)
+            throw new InvalidOperationException($"The property {fieldValue.Route} has a NotNullValidator, but a computed column is never set in memory. Declare it as nullable, or add [NotNullValidator(Disabled = true)]");
+
         fieldValue.Nullable = IsNullable.Yes;
         fieldValue.SetComputedColumn(() => new ComputedColumn(ComputedColumnTranslator.Translate(table, expression), persisted));
 

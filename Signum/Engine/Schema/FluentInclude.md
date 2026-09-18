@@ -127,9 +127,10 @@ Generated DDL in SQL Server: `CompanyId AS (JSON_VALUE(Data, '$.companyId')) PER
 To index a numeric JSON value, cast it in the expression: `c => int.Parse(c.Data.JsonValue("$.maxUsers"))` → `CAST(JSON_VALUE(Data, '$.maxUsers') as INT)`.
 
 Rules: 
-* The property has to be a simple value property (no embedded entities, `Lite<T>` or `MList<T>`) and nullable, because the database decides the nullability of the column.
+* The property has to be a simple value property (no embedded entities, `Lite<T>` or `MList<T>`) and nullable, because the database decides the nullability of the column. 
+For a reference type (like `string`) declare it as `string?`, or add `[NotNullValidator(Disabled = true)]`: a not nullable reference property gets an implicit `NotNullValidator` that would make every `Save` fail.
 * The expression can only use columns of the same table: no joins, navigation to other entities, sub-queries or aggregates. Constants are inlined as literals.
-* The column is skipped when saving and `UnsafeInsert` / `UnsafeUpdate` throw if they try to set it. 
+* The column is skipped when saving and `UnsafeInsert` / `UnsafeUpdate` throw if they try to set it. The value in memory is not refreshed after saving, the entity has to be retrieved again. 
 * Not supported yet on system-versioned tables or MList tables. PostgreSQL requires `persisted: true`. 
 
 Internally calls `SchemaBuilder.AddComputedColumn`.
