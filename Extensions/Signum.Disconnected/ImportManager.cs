@@ -407,6 +407,8 @@ public class BasicImporter<T> : ICustomImporter where T : Entity
         ParameterBuilder pb = Connector.Current.ParameterBuilder;
         var created = table.Mixins![typeof(DisconnectedCreatedMixin)].Columns().Single();
         var isPostgres = Schema.Current.Settings.IsPostgres;
+        //Computed columns are calculated by the database and can not be the target of an INSERT
+        var columns = rt.Columns.Values.Where(c => c.ComputedColumn == null).ToList();
 
         string command = @"INSERT INTO {0} ({1})
 SELECT {2}
@@ -414,8 +416,8 @@ FROM {3} as [relationalTable]
 JOIN {4} [table] on [relationalTable].{5} = [table].{6}
 WHERE [table].{7} = 1".FormatWith(
 rt.Name,
-rt.Columns.Values.ToString(c => c.Name.SqlEscape(isPostgres), ", "),
-rt.Columns.Values.ToString(c => "[relationalTable]." + c.Name.SqlEscape(isPostgres), ", "),
+columns.ToString(c => c.Name.SqlEscape(isPostgres), ", "),
+columns.ToString(c => "[relationalTable]." + c.Name.SqlEscape(isPostgres), ", "),
 rt.Name.OnDatabase(newDatabaseName),
 table.Name.OnDatabase(newDatabaseName),
 rt.BackReference.Name.SqlEscape(isPostgres),
@@ -430,14 +432,15 @@ created.Name.SqlEscape(isPostgres));
     {
         var isPostgres = Schema.Current.Settings.IsPostgres;
         var created = table.Mixins![typeof(DisconnectedCreatedMixin)].Columns().Single();
+        var columns = table.Columns.Values.Where(c => c.ComputedColumn == null).ToList();
 
         string command = @"INSERT INTO {0} ({1})
 SELECT {2}
 FROM {3} as [table]
 WHERE [table].{4} = 1".FormatWith(
 table.Name,
-table.Columns.Values.ToString(c => c.Name.SqlEscape(isPostgres), ", "),
-table.Columns.Values.ToString(c => created == c ? "0" : "[table]." + c.Name.SqlEscape(isPostgres), ", "),
+columns.ToString(c => c.Name.SqlEscape(isPostgres), ", "),
+columns.ToString(c => created == c ? "0" : "[table]." + c.Name.SqlEscape(isPostgres), ", "),
 table.Name.OnDatabase(newDatabaseName),
 created.Name.SqlEscape(isPostgres));
 
@@ -501,13 +504,15 @@ public class UpdateImporter<T> : BasicImporter<T> where T : Entity
     {
         ParameterBuilder pb = Connector.Current.ParameterBuilder;
         var isPostgres = Schema.Current.Settings.IsPostgres;
+        //Computed columns are calculated by the database and can not be the target of an INSERT
+        var columns = rt.Columns.Values.Where(c => c.ComputedColumn == null).ToList();
         var insert = new SqlPreCommandSimple(@"INSERT INTO {0} ({1})
 SELECT {2}
 FROM {3} as [relationalTable]
 INNER JOIN {4} as [table] ON [relationalTable].{5} = [table].{6}".FormatWith(
         rt.Name,
-        rt.Columns.Values.ToString(c => c.Name.SqlEscape(isPostgres), ", "),
-        rt.Columns.Values.ToString(c => "[relationalTable]." + c.Name.SqlEscape(isPostgres), ", "),
+        columns.ToString(c => c.Name.SqlEscape(isPostgres), ", "),
+        columns.ToString(c => "[relationalTable]." + c.Name.SqlEscape(isPostgres), ", "),
         rt.Name.OnDatabase(newDatabaseName),
         table.Name.OnDatabase(newDatabaseName),
         rt.BackReference.Name.SqlEscape(isPostgres),
@@ -541,7 +546,7 @@ FROM {0}
 INNER JOIN {1} as [table] ON {0}.{3} = [table].{3}".FormatWith(
  table.Name,
  table.Name.OnDatabase(newDatabaseName),
- table.Columns.Values.Where(c => !c.PrimaryKey).ToString(c => "   {0} = [table].{0}".FormatWith(c.Name.SqlEscape(isPostgres)), ",\n"),
+ table.Columns.Values.Where(c => !c.PrimaryKey && c.ComputedColumn == null).ToString(c => "   {0} = [table].{0}".FormatWith(c.Name.SqlEscape(isPostgres)), ",\n"),
  table.PrimaryKey.Name.SqlEscape(isPostgres))
  + GetUpdateWhere(table),
  new List<DbParameter> { pb.CreateParameter("@machineId", machine.Id.Object, machine.Id.Object.GetType(), default) });

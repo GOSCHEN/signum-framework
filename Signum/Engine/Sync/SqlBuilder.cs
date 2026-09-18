@@ -803,9 +803,12 @@ WHERE {oldPrimaryKey.SqlEscape(IsPostgres)} NOT IN
         if (Equals(oldTable.Name.Schema.Database, newTableName.Schema.Database))
             return RenameOrChangeSchema(oldTable.Name, newTableName);
 
+        //Computed columns are calculated by the database and can not be the target of an INSERT
+        var columnNames = newTable.Columns.Values.Where(c => c.ComputedColumn == null).Select(c => c.Name).ToList();
+
         return SqlPreCommand.Combine(Spacing.Simple,
           CreateTableSql(newTable, newTableName, avoidSystemVersioning: true, forHistoryTable: forHistoryTable),
-          MoveRows(oldTable.Name, newTableName, newTable.Columns.Keys, identityInsert: newTable.Columns.Values.Any(c => c.PrimaryKey && c.Identity) && !forHistoryTable),
+          MoveRows(oldTable.Name, newTableName, columnNames, identityInsert: newTable.Columns.Values.Any(c => c.PrimaryKey && c.Identity) && !forHistoryTable),
           DropTable(oldTable, isPostgres))!;
     }
 
