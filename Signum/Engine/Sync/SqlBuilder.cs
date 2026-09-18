@@ -298,12 +298,13 @@ FOR EACH ROW EXECUTE PROCEDURE versioning({VersioningTriggerArgs(t.SystemVersion
 
     public string ColumnLine(IColumn c, DefaultConstraint? defaultConst, CheckConstraint? checkConst, bool isChange, bool avoidSystemVersion = false, bool forHistoryTable = false)
     {
-        string fullType = GetColumnType(c);
+        //SQL Server infers the type of computed columns, PostgreSQL requires it
+        string? fullType = c.ComputedColumn != null && !isPostgres ? null : GetColumnType(c);
 
         var generatedAlways =
             c.ComputedColumn is { } ga ? (isPostgres ?
-                $"GENERATED ALWAYS AS ({ga.Expression}) {(ga.Persisted ? "STORED" : null)}":
-                $"AS ({ga.Expression}) {((ga.Persisted ? " PERSISTED" : null))}") :
+                $"GENERATED ALWAYS AS ({ga.Expression}){(ga.Persisted ? " STORED" : null)}":
+                $"AS ({ga.Expression}){(ga.Persisted ? " PERSISTED" : null)}") :
             c is SystemVersionedInfo.SqlServerPeriodColumn svc && !forHistoryTable && !avoidSystemVersion ? $"GENERATED ALWAYS AS ROW {(svc.SystemVersionColumnType == SystemVersionedInfo.SystemVersionColumnType.Start ? "START" : "END")} HIDDEN" :
             null;
 

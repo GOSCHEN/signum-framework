@@ -11,6 +11,14 @@ internal class ConditionsRewriter: DbExpressionVisitor
         return new ConditionsRewriter().Visit(expression);
     }
 
+    //Rewrites a stand-alone expression (i.e. a computed column definition) so boolean conditions become values
+    public static Expression RewriteAsValue(Expression expression)
+    {
+        var rewriter = new ConditionsRewriter();
+        using (rewriter.InSql())
+            return rewriter.MakeSqlValue(rewriter.Visit(expression));
+    }
+
     public bool inSql = false;
 
     public IDisposable InSql()

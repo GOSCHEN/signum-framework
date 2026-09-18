@@ -355,6 +355,11 @@ public class NominationPointEmbedded : EmbeddedEntity
 public class ConfigEntity : Entity
 {
     public EmbeddedConfigEmbedded? EmbeddedConfig { get; set; }
+
+    [DbType(Size = int.MaxValue)]
+    public string? Data { get; set; } //JSON
+
+    public string? CompanyId { get; private set; } //Computed column from Data
 }
 
 [AutoInit]

@@ -38,6 +38,64 @@ public static class JsonExtensions
                throw new UnexpectedValueException(reader.TokenType);
     }
 
+    /// <summary>
+    /// Extracts a scalar value from a JSON text using a SQL Server JSON path like "$.a.b[0]".
+    /// In the LINQ provider it translates to JSON_VALUE (SQL Server) or #&gt;&gt; (PostgreSQL).
+    /// In-memory it uses lax semantics: a missing path or a non-scalar value returns null.
+    /// </summary>
+    public static string? JsonValue(this string? json, string path)
+    {
+        if (json == null)
+            return null;
+
+        var (strict, segments) = JsonPathParser.Parse(path);
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var current = doc.RootElement;
+            foreach (var segment in segments)
+            {
+                if (segment.Index is int index)
+                {
+                    if (current.ValueKind != JsonValueKind.Array || index >= current.GetArrayLength())
+                        return NotFound(strict, path);
+
+                    current = current[index];
+                }
+                else
+                {
+                    if (current.ValueKind != JsonValueKind.Object || !current.TryGetProperty(segment.Name!, out var prop))
+                        return NotFound(strict, path);
+
+                    current = prop;
+                }
+            }
+
+            return current.ValueKind switch
+            {
+                JsonValueKind.String => current.GetString(),
+                JsonValueKind.Number => current.GetRawText(),
+                JsonValueKind.True => "true",
+                JsonValueKind.False => "false",
+                JsonValueKind.Null => null,
+                _ => strict ? throw new InvalidOperationException($"JSON path '{path}' does not point to a scalar value") : null,
+            };
+        }
+        catch (JsonException) when (!strict)
+        {
+            return null;
+        }
+    }
+
+    static string? NotFound(bool strict, string path)
+    {
+        if (strict)
+            throw new InvalidOperationException($"JSON path '{path}' not found");
+
+        return null;
+    }
+
     //Binary
     public static string ToJsonString(object obj, JsonSerializerOptions? options = null)
     {
@@ -91,5 +149,90 @@ public static class JsonExtensions
             return value;
 
         return null;
+    }
+}
+
+/// <summary>
+/// Minimal parser for SQL Server JSON path expressions: [lax|strict] $ { .name | ."quoted name" | [index] }
+/// </summary>
+public static class JsonPathParser
+{
+    public readonly struct Segment
+    {
+        public readonly string? Name;
+        public readonly int? Index;
+
+        public Segment(string name) { Name = name; Index = null; }
+        public Segment(int index) { Name = null; Index = index; }
+
+        public override string ToString() => Index is int i ? $"[{i}]" : $".{Name}";
+    }
+
+    public static (bool strict, List<Segment> segments) Parse(string path)
+    {
+        if (path == null)
+            throw new ArgumentNullException(nameof(path));
+
+        var p = path.Trim();
+        bool strict = false;
+        if (p.StartsWith("strict ", StringComparison.OrdinalIgnoreCase))
+        {
+            strict = true;
+            p = p.Substring("strict ".Length).TrimStart();
+        }
+        else if (p.StartsWith("lax ", StringComparison.OrdinalIgnoreCase))
+        {
+            p = p.Substring("lax ".Length).TrimStart();
+        }
+
+        if (p.Length == 0 || p[0] != '$')
+            throw new FormatException($"Invalid JSON path '{path}': it should start with '$'");
+
+        var segments = new List<Segment>();
+        int i = 1;
+        while (i < p.Length)
+        {
+            if (p[i] == '.')
+            {
+                i++;
+                if (i < p.Length && p[i] == '"')
+                {
+                    int end = p.IndexOf('"', i + 1);
+                    if (end == -1)
+                        throw new FormatException($"Invalid JSON path '{path}': unterminated quoted name");
+
+                    segments.Add(new Segment(p.Substring(i + 1, end - i - 1)));
+                    i = end + 1;
+                }
+                else
+                {
+                    int start = i;
+                    while (i < p.Length && p[i] != '.' && p[i] != '[')
+                        i++;
+
+                    if (start == i)
+                        throw new FormatException($"Invalid JSON path '{path}': empty property name");
+
+                    segments.Add(new Segment(p.Substring(start, i - start)));
+                }
+            }
+            else if (p[i] == '[')
+            {
+                int end = p.IndexOf(']', i);
+                if (end == -1)
+                    throw new FormatException($"Invalid JSON path '{path}': unterminated array index");
+
+                var inner = p.Substring(i + 1, end - i - 1).Trim();
+                if (!int.TryParse(inner, out int index) || index < 0)
+                    throw new FormatException($"Invalid JSON path '{path}': only non-negative array indexes are supported, not '{inner}'");
+
+                segments.Add(new Segment(index));
+                i = end + 1;
+            }
+            else
+                throw new FormatException($"Invalid JSON path '{path}': unexpected character '{p[i]}' at position {i}");
+        }
+
+        return (strict, segments);
     }
 }

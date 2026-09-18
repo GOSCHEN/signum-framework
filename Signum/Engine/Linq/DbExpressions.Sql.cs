@@ -679,6 +679,8 @@ internal enum SqlFunction
     VECTOR_DISTANCE,
     VECTOR_NORM,
     VECTOR_NORMALIZE,
+
+    JSON_VALUE,
 }
 
 internal enum PostgresFunction
@@ -713,8 +715,9 @@ public static class PostgressOperator
     public static string IsContained = "<@";
     public static string Matches = "@@";
     public static string Minus = "-";
+    public static string JsonPathText = "#>>";
 
-    public static string[] All = new[] { Overlap, Contains, IsContained, Matches, Minus };
+    public static string[] All = new[] { Overlap, Contains, IsContained, Matches, Minus, JsonPathText };
 }
 
 internal enum SqlEnums

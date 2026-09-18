@@ -2879,6 +2879,8 @@ internal class QueryBinder : ExpressionVisitor
             }
         }
 
+        AssertNoComputedColumns(table, assignments);
+
         var isHistory = this.systemTime is SystemTime.HistoryTable;
         Expression condition;
 
@@ -2957,6 +2959,8 @@ internal class QueryBinder : ExpressionVisitor
             assignments.Add(new ColumnAssignment(entityTable.Ticks.Name, Expression.Constant(0L, typeof(long))));
         }
 
+        AssertNoComputedColumns(table, assignments);
+
         var isHistory = this.systemTime is SystemTime.HistoryTable;
 
         var result = new CommandAggregateExpression(new CommandExpression[]
@@ -2965,6 +2969,14 @@ internal class QueryBinder : ExpressionVisitor
         });
 
         return (CommandAggregateExpression)QueryJoinExpander.ExpandJoins(result, this, cleanRequests: true, null);
+    }
+
+    static void AssertNoComputedColumns(ITable table, List<ColumnAssignment> assignments)
+    {
+        var computed = assignments.Select(a => table.Columns.TryGetC(a.Column)).NotNull().Where(c => c.ComputedColumn != null).ToList();
+
+        if (computed.Any())
+            throw new InvalidOperationException($"The computed column{(computed.Count > 1 ? "s" : "")} {computed.ToString(c => c.Name, ", ")} of {table.Name} can not be the target of an INSERT or UPDATE");
     }
 
     static readonly MethodInfo miSetReadonly = ReflectionTools.GetMethodInfo(() => UnsafeEntityExtensions.SetReadonly(null!, (Entity a) => a.Id, 1)).GetGenericMethodDefinition();

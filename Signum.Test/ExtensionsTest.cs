@@ -4,6 +4,30 @@ namespace Signum.Test;
 public class ExtensionsTest
 {
     [Fact]
+    public void JsonValue()
+    {
+        var json = """{"a":{"b":[1,2,{"c":"x"}],"name":"John O'Neil","ok":true,"none":null,"with space":5}}""";
+
+        Assert.Equal("2", json.JsonValue("$.a.b[1]"));
+        Assert.Equal("x", json.JsonValue("$.a.b[2].c"));
+        Assert.Equal("John O'Neil", json.JsonValue("$.a.name"));
+        Assert.Equal("true", json.JsonValue("$.a.ok"));
+        Assert.Equal("5", json.JsonValue("$.a.\"with space\""));
+        Assert.Equal("2", json.JsonValue("lax $.a.b[1]"));
+
+        Assert.Null(json.JsonValue("$.a.none"));
+        Assert.Null(json.JsonValue("$.a.missing"));
+        Assert.Null(json.JsonValue("$.a.b[9]"));
+        Assert.Null(json.JsonValue("$.a")); //not a scalar
+        Assert.Null(((string?)null).JsonValue("$.a"));
+        Assert.Null("not json".JsonValue("$.a"));
+
+        Assert.Throws<InvalidOperationException>(() => json.JsonValue("strict $.a.missing"));
+        Assert.Throws<FormatException>(() => json.JsonValue("a.b"));
+        Assert.Throws<FormatException>(() => json.JsonValue("$.a.b[*]"));
+    }
+
+    [Fact]
     public void CartesianProduct()
     {
         var result1 = new[] { "ab", "xy", "01" }.CartesianProduct().ToString(a => a.ToString(""), " ");

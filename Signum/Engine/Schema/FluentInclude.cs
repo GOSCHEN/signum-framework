@@ -25,6 +25,12 @@ public class FluentInclude<T> where T : Entity
         return this;
     }
 
+    public FluentInclude<T> WithComputedColumn<V>(Expression<Func<T, V>> property, Expression<Func<T, V>> expression, bool persisted = true)
+    {
+        this.SchemaBuilder.AddComputedColumn<T, V>(property, expression, persisted);
+        return this;
+    }
+
     public FluentInclude<T> WithFullTextIndex(Expression<Func<T, object?>> fields, Action<FullTextTableIndex>? customize = null)
     {
         var result = this.SchemaBuilder.AddFullTextIndex<T>(fields, customize);

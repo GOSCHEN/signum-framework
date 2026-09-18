@@ -99,6 +99,41 @@ public FluentInclude<T> WithIndex(Expression<Func<T, object>> fields)
 
 Internally calls `SchemaBuilder.AddUniqueIndex`.
 
+### WithComputedColumn
+
+Declares a property as a computed column. The SQL expression is not written by hand: the lambda is translated by the LINQ provider, 
+so it is compile-time checked and works in SQL Server (`AS (...) PERSISTED`) and PostgreSQL (`GENERATED ALWAYS AS (...) STORED`).
+
+```C#
+public FluentInclude<T> WithComputedColumn<V>(Expression<Func<T, V>> property, Expression<Func<T, V>> expression, bool persisted = true)
+```
+
+```C#
+public class ConfigEntity : Entity
+{
+    [DbType(Size = int.MaxValue)]
+    public string? Data { get; set; } // JSON text
+
+    public string? CompanyId { get; private set; } // computed, read from the database, never written
+}
+
+sb.Include<ConfigEntity>()
+    .WithComputedColumn(c => c.CompanyId, c => c.Data.JsonValue("$.companyId"))
+    .WithIndex(c => c.CompanyId);
+```
+
+Generated DDL in SQL Server: `CompanyId AS (JSON_VALUE(Data, '$.companyId')) PERSISTED`.
+
+To index a numeric JSON value, cast it in the expression: `c => int.Parse(c.Data.JsonValue("$.maxUsers"))` → `CAST(JSON_VALUE(Data, '$.maxUsers') as INT)`.
+
+Rules: 
+* The property has to be a simple value property (no embedded entities, `Lite<T>` or `MList<T>`) and nullable, because the database decides the nullability of the column.
+* The expression can only use columns of the same table: no joins, navigation to other entities, sub-queries or aggregates. Constants are inlined as literals.
+* The column is skipped when saving and `UnsafeInsert` / `UnsafeUpdate` throw if they try to set it. 
+* Not supported yet on system-versioned tables or MList tables. PostgreSQL requires `persisted: true`. 
+
+Internally calls `SchemaBuilder.AddComputedColumn`.
+
 ### WithQuery
 
 Extension method that registers a simple query in QueryLogic.Queeries using `typeof(T)` as `queryName`, with no filters, joins or column customizations, and just using the provided `simpleQuerySelector` as the `selector` of the only `Select` operator. 

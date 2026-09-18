@@ -150,6 +150,34 @@ public class SchemaBuilder
         return index;
     }
 
+    /// <summary>
+    /// Declares <paramref name="property"/> as a computed column whose SQL definition is translated from <paramref name="expression"/> by the LINQ provider.
+    /// The column is never written when saving; the database calculates it (SQL Server: AS (...) PERSISTED, PostgreSQL: GENERATED ALWAYS AS (...) STORED).
+    /// </summary>
+    public FieldValue AddComputedColumn<T, V>(Expression<Func<T, V>> property, Expression<Func<T, V>> expression, bool persisted = true) where T : Entity
+    {
+        var table = Schema.Table<T>();
+
+        var field = Schema.FindField(table, Reflector.GetMemberList(property));
+
+        if (field is not FieldValue fieldValue)
+            throw new InvalidOperationException($"Property '{property}' is a {field.GetType().Name}. Only simple value properties of {typeof(T).TypeName()} can be computed columns");
+
+        if (table.SystemVersioned != null)
+            throw new InvalidOperationException($"Computed columns on system-versioned tables are not supported yet ({typeof(T).TypeName()}.{fieldValue.Name})");
+
+        if (!persisted && Settings.IsPostgres)
+            throw new InvalidOperationException($"PostgreSQL only supports persisted generated columns ({typeof(T).TypeName()}.{fieldValue.Name})");
+
+        if (fieldValue.FieldType.IsValueType && !fieldValue.FieldType.IsNullable())
+            throw new InvalidOperationException($"The property {typeof(T).TypeName()}.{fieldValue.Name} should be nullable ({fieldValue.FieldType.Nullify().TypeName()}) because the database decides the nullability of a computed column");
+
+        fieldValue.Nullable = IsNullable.Yes;
+        fieldValue.SetComputedColumn(() => new ComputedColumn(ComputedColumnTranslator.Translate(table, expression), persisted));
+
+        return fieldValue;
+    }
+
     public FullTextTableIndex AddFullTextIndex<T>(Expression<Func<T, object?>> fields, Action<FullTextTableIndex>? customize = null) where T : Entity
     {
         var table = Schema.Table<T>();

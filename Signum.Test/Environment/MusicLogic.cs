@@ -92,8 +92,13 @@ public static class MusicLogic
         if (Connector.Current is SqlServerConnector ss && ss.SupportsFullTextSearch || Connector.Current is PostgreSqlConnector)
             sb.AddFullTextIndex<NoteWithDateEntity>(a => new { a.Title, a.Text });
 
-        sb.Include<ConfigEntity>()
+        var configInclude = sb.Include<ConfigEntity>()
             .WithSave(ConfigOperation.Save);
+
+        if (Connector.Current is SqlServerConnector sqlServer && sqlServer.SupportsJson || Connector.Current is PostgreSqlConnector)
+            configInclude
+                .WithComputedColumn(c => c.CompanyId, c => c.Data.JsonValue("$.companyId"))
+                .WithIndex(c => c.CompanyId);
 
         MinimumExtensions.IncludeFunction(sb.Schema.Assets);
         sb.Include<ArtistEntity>()

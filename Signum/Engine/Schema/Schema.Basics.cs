@@ -678,8 +678,18 @@ public partial class FieldValue : Field, IColumn
     public bool AvoidForeignKey => false;
     public string? Default { get; set; }
     public string? Check { get; set; }
-    ComputedColumn? IColumn.ComputedColumn => null;
     public DateTimeKind DateTimeKind { get; set; }
+
+    ComputedColumn? computedColumn;
+    Func<ComputedColumn>? computedColumnFactory;
+    //Evaluated lazily because the SQL expression is translated by the LINQ provider, that requires an initialized Schema
+    public ComputedColumn? ComputedColumn => computedColumnFactory == null ? null : (computedColumn ??= computedColumnFactory());
+
+    internal void SetComputedColumn(Func<ComputedColumn> factory)
+    {
+        computedColumn = null;
+        computedColumnFactory = factory;
+    }
 
     public FieldValue(PropertyRoute route, Type? fieldType, string name)
         : base(route, fieldType)
