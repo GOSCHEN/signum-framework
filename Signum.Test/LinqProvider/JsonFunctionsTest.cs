@@ -114,6 +114,17 @@ public class JsonFunctionsTest
     }
 
     [Fact]
+    public void ComputedColumnIsSynchronized()
+    {
+        //The definition stored by the database (SQL Server: (json_value([Data],'$.companyId'))) has to be recognized as equal to the generated one
+        var script = Administrator.TotalSynchronizeScript(out _, interactive: false, schemaOnly: true);
+
+        var column = (FieldValue)Schema.Current.Field((ConfigEntity c) => c.CompanyId);
+        if (script != null)
+            Assert.DoesNotContain(column.Name, script.PlainSql());
+    }
+
+    [Fact]
     public void ComputedColumnCanNotBeUpdated()
     {
         var ex = Assert.Throws<InvalidOperationException>(() =>
